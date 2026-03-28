@@ -267,8 +267,4 @@ npm run dev:dashboard   # Dashboard development
 npm run test            # Test suite
 ```
 
----
-
-**Built with [Claude Code](https://claude.ai) (Opus 4.6) — zero human-written code.**
-
-Made by [@krishnashahane](https://github.com/krishnashahane)
+Developed by [@krishnashahane](https://github.com/krishnashahane)
