@@ -1,32 +1,38 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import type { Command } from 'commander';
-import { writeFile } from 'node:fs/promises';
+
+function parseLimit(value: string): number {
+  const limit = Number.parseInt(value, 10);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100_000) {
+    throw new Error('Limit must be an integer between 1 and 100000');
+  }
+  return limit;
+}
 
 export function exportCommand(program: Command): void {
   program
     .command('export')
-    .description('Export traces to JSON file')
-    .option('-o, --output <path>', 'Output file path', 'traces-export.json')
-    .option('--limit <count>', 'Max traces', '1000')
-    .option('--sqlite-path <path>', 'SQLite path', '.agenttrace/data.db')
-    .action(async (options) => {
+    .description('Export stored traces to JSON')
+    .option('-i, --input <path>', 'JSONL trace storage path', '.agenttrace/traces.jsonl')
+    .option('-o, --output <path>', 'Output JSON path', 'traces-export.json')
+    .option('--limit <count>', 'Maximum traces to export', '1000')
+    .action(async (options: { input: string; output: string; limit: string }) => {
+      const input = resolve(options.input);
+      const output = resolve(options.output);
+
+      if (input === output) throw new Error('Input and output paths must be different');
+
       try {
-        const { createStorage } = await import('@agenttrace/storage');
-        const storage = createStorage({ type: 'sqlite', sqlitePath: options.sqlitePath });
-        await storage.initialize();
-
-        const result = await storage.listTraces({}, 1, parseInt(options.limit));
-        const exportData = [];
-        for (const trace of result.data) {
-          const spans = await storage.getSpanTree(trace.traceId);
-          exportData.push({ ...trace, spans });
-        }
-
-        await writeFile(options.output, JSON.stringify(exportData, null, 2));
-        console.log(`✅ Exported ${exportData.length} traces to ${options.output}`);
-        await storage.close();
-      } catch (err) {
-        console.error('❌ Export failed:', err);
-        process.exit(1);
+        const raw = await readFile(input, 'utf8');
+        const lines = raw.split(/\r?\n/).filter(Boolean);
+        const limit = parseLimit(options.limit);
+        const traces = lines.slice(Math.max(0, lines.length - limit)).map((line) => JSON.parse(line));
+        await writeFile(output, JSON.stringify(traces, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+        console.log(`Exported ${traces.length} traces to ${output}`);
+      } catch (error: unknown) {
+        console.error('Export failed:', error instanceof Error ? error.message : error);
+        process.exitCode = 1;
       }
     });
 }
